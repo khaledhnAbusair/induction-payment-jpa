@@ -19,4 +19,6 @@ public interface PaymentRequestGateway {
 
 	Collection<PaymentRequest> loadPaymentRequestsByOrderingAccountIBAN(String iban);
 
+	void updatePaymentRequest(PaymentRequest paymentRequest);
+
 }

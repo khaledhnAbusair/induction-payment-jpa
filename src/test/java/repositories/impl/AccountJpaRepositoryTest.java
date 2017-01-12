@@ -100,13 +100,6 @@ public class AccountJpaRepositoryTest {
 		accountJpaRepository.createAccount(accountByIBAN);
 	}
 
-	@Test(expected = NoAccountHasBeenUpdated.class)
-	public void givenAccountJpaRepositry_CallingUpdateAccount_ShouldThrowNoAccountHasBeenUpdated() {
-		Account account = accountJpaRepository.loadAccountByIBAN(AVAILABLE_ACCOUNT_IBAN);
-		account.setStatus(null);
-		accountJpaRepository.updateAccount(account);
-	}
-
 	private Account populateNewAccount() {
 		Account insertAccount = new Account();
 		Currency currency = new Currency();

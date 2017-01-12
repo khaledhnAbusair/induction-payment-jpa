@@ -39,7 +39,7 @@ public class PaymentPurposeJpaRepository implements PaymentPurposeGateway {
 		isEmptyPurposeCode(code);
 		isNullPurposeCode(code);
 		PaymentPurpose purposeCode = entityManager.find(PaymentPurpose.class, code);
-		isNullPaymentPurpose(purposeCode);
+		validatePaymentPurposeResult(purposeCode);
 		return purposeCode;
 	}
 
@@ -47,22 +47,25 @@ public class PaymentPurposeJpaRepository implements PaymentPurposeGateway {
 	public void insertPaymentPurpose(PaymentPurpose paymentPurpose) {
 		PaymentPurpose purpose = populateNewPaymentPurpose(paymentPurpose);
 		entityManager.getTransaction().begin();
-		PaymentPurpose find = entityManager.find(PaymentPurpose.class, purpose.getCode());
-		if (Objects.nonNull(find)) {
-			entityManager.getTransaction().rollback();
-			throw new PaymentPurposeIsAlreadyExistException();
+		boolean commited = false;
+		try {
+			PaymentPurpose find = entityManager.find(PaymentPurpose.class, purpose.getCode());
+			if (Objects.nonNull(find)) {
+				throw new PaymentPurposeIsAlreadyExistException();
+			}
+			entityManager.persist(paymentPurpose);
+			entityManager.getTransaction().commit();
+			commited = true;
+		} finally {
+			if (!commited)
+				entityManager.getTransaction().rollback();
 		}
-		entityManager.persist(paymentPurpose);
-		entityManager.getTransaction().commit();
-
 	}
 
 	@Override
 	public Collection<PaymentPurpose> loadPaymentPurposes() {
 		TypedQuery<PaymentPurpose> listOfPaymentPurpose = entityManager.createNamedQuery("PaymentPurpose.findAll",
 				PaymentPurpose.class);
-		if (Objects.isNull(listOfPaymentPurpose))
-			throw new PaymentPurposeNotFoundException();
 		return listOfPaymentPurpose.getResultList();
 	}
 
@@ -71,7 +74,7 @@ public class PaymentPurposeJpaRepository implements PaymentPurposeGateway {
 		isEmptyPaymentCode(code);
 		isNullPaymentCode(code);
 		PaymentPurpose paymentPurposeForDelete = entityManager.find(PaymentPurpose.class, code);
-		isNullPaymentPurposeForDelete(paymentPurposeForDelete);
+		validatePaymentPurpose(paymentPurposeForDelete);
 		entityManager.getTransaction().begin();
 		entityManager.remove(paymentPurposeForDelete);
 		entityManager.getTransaction().commit();
@@ -80,22 +83,25 @@ public class PaymentPurposeJpaRepository implements PaymentPurposeGateway {
 
 	@Override
 	public void updatePaymentPurposeName(PaymentPurpose paymentPurpose) {
-
+		boolean paymentCommit = false;
 		Query query = entityManager.createQuery(UPDATE_PAYMENT_PURPOSE);
 		query.setParameter(PAYMENT_PURPOSE_NAME, paymentPurpose.getName());
 		query.setParameter(PAYMENT_PURPOSE_CODE, paymentPurpose.getCode());
 		try {
 			entityManager.getTransaction().begin();
-			query.executeUpdate();
+			int effectedRow = query.executeUpdate();
+			if (effectedRow == 0)
+				throw new NoPaymentPurposeHassBeenUpdated();
 			entityManager.getTransaction().commit();
-		} catch (Exception e) {
-			entityManager.getTransaction().rollback();
-			throw new NoPaymentPurposeHassBeenUpdated();
+			paymentCommit = true;
+		} finally {
+			if (!paymentCommit)
+				entityManager.getTransaction().rollback();
 		}
 
 	}
 
-	private void isNullPaymentPurpose(PaymentPurpose purposeCode) {
+	private void validatePaymentPurposeResult(PaymentPurpose purposeCode) {
 		if (Objects.isNull(purposeCode)) {
 			throw new PaymentPurposeNotFoundException();
 		}
@@ -110,7 +116,7 @@ public class PaymentPurposeJpaRepository implements PaymentPurposeGateway {
 		isEmptyPaymentCode(code);
 	}
 
-	private void isNullPaymentPurposeForDelete(PaymentPurpose paymentPurposeForDelete) {
+	private void validatePaymentPurpose(PaymentPurpose paymentPurposeForDelete) {
 		if (Objects.isNull(paymentPurposeForDelete))
 			throw new NoneExistingPaymentPurposeException();
 	}

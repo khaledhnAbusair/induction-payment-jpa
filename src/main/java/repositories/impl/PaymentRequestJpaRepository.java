@@ -1,5 +1,9 @@
 package repositories.impl;
 
+import static repositories.sqlconstants.SqlConstants.SELECT_PAYMENT_REQUEST_FOR_ORDARING_IBAN;
+import static repositories.sqlconstants.SqlConstants.SELECT_PAYMENT_REQUEST_FOR_PAYMENT_DATE;
+
+import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
 import java.util.Date;
 import java.util.Objects;
@@ -7,18 +11,16 @@ import java.util.Objects;
 import javax.persistence.EntityManager;
 import javax.persistence.TypedQuery;
 
+import org.apache.commons.beanutils.BeanUtils;
+
 import entity.Currency;
 import entity.PaymentPurpose;
 import entity.PaymentRequest;
 import repositories.PaymentRequestGateway;
-import repositories.exceptions.AccountHasNoPaymentRequestsDueThisDayException;
-import repositories.exceptions.AccountHasNoPaymentRequestsException;
 import repositories.exceptions.NoneExistingPaymentRequestException;
-import repositories.exceptions.NullPaymentRequestDateException;
-import repositories.exceptions.PaymentPurposeNotFoundException;
 import repositories.exceptions.PaymentRequestIsAlreadyExistException;
+import repositories.exceptions.PopulateEntityException;
 import repositories.loader.EntityManagerLoader;
-import static repositories.sqlconstants.SqlConstants.*;
 
 public class PaymentRequestJpaRepository implements PaymentRequestGateway {
 
@@ -54,66 +56,61 @@ public class PaymentRequestJpaRepository implements PaymentRequestGateway {
 	@Override
 	public void insertPaymentRequest(PaymentRequest paymentRequest) {
 
-		entityManager.getTransaction().begin();
 		PaymentRequest request = populateNewPaymentRequest(paymentRequest);
-		PaymentRequest find = entityManager.find(PaymentRequest.class, request.getId());
-		if (Objects.nonNull(find)) {
-			entityManager.getTransaction().rollback();
-			throw new PaymentRequestIsAlreadyExistException();
+		entityManager.getTransaction().begin();
+
+		boolean commited = false;
+		try {
+			PaymentRequest find = entityManager.find(PaymentRequest.class, request.getId());
+			if (!Objects.isNull(find))
+				throw new PaymentRequestIsAlreadyExistException();
+			entityManager.persist(request);
+			entityManager.getTransaction().commit();
+			commited = true;
+		} finally {
+			if (!commited)
+				entityManager.getTransaction().rollback();
 		}
-		entityManager.persist(paymentRequest);
-		entityManager.getTransaction().commit();
 	}
 
 	@Override
 	public Collection<PaymentRequest> loadPaymentRequests() {
+
 		TypedQuery<PaymentRequest> typedQuery = entityManager.createNamedQuery("PaymentRequest.findAll",
 				PaymentRequest.class);
-		if (Objects.isNull(typedQuery))
-			throw new PaymentPurposeNotFoundException();
 		return typedQuery.getResultList();
 	}
 
 	@Override
 	public Collection<PaymentRequest> loadPaymentRequestsByOrderingAccountIBAN(String iban) {
 
-		if (Objects.isNull(iban))
-			throw new PaymentPurposeNotFoundException();
 		TypedQuery<PaymentRequest> paymentRequestsForIban = entityManager
 				.createQuery(SELECT_PAYMENT_REQUEST_FOR_ORDARING_IBAN, PaymentRequest.class);
 		paymentRequestsForIban.setParameter(ORD_IBAN, iban);
-		if (Objects.isNull(paymentRequestsForIban))
-			throw new AccountHasNoPaymentRequestsException();
 		return paymentRequestsForIban.getResultList();
 	}
 
 	@Override
 	public Collection<PaymentRequest> loadPaymentRequestByPaymentDate(Date paymentRequestDate) {
-		if (Objects.isNull(paymentRequestDate))
-			throw new NullPaymentRequestDateException();
+
 		TypedQuery<PaymentRequest> paymentRequestsForDate = entityManager
 				.createQuery(SELECT_PAYMENT_REQUEST_FOR_PAYMENT_DATE, PaymentRequest.class);
 		paymentRequestsForDate.setParameter(PAYMENT_DATE, paymentRequestDate);
-		if (Objects.isNull(paymentRequestsForDate))
-			throw new AccountHasNoPaymentRequestsDueThisDayException();
 		return paymentRequestsForDate.getResultList();
 	}
 
 	private PaymentRequest populateNewPaymentRequest(PaymentRequest paymentRequest) {
 		PaymentPurpose purposeCode = entityManager.find(PaymentPurpose.class,
 				paymentRequest.getPaymentPurpose().getCode());
-
 		Currency currencyCode = entityManager.find(Currency.class, paymentRequest.getCurrencyCode());
-
 		PaymentRequest request = new PaymentRequest();
-		request.setAmount(paymentRequest.getAmount());
-		request.setAmountInWords(paymentRequest.getAmountInWords());
-		request.setBenefIban(paymentRequest.getBenefIban());
-		request.setBenefName(paymentRequest.getBenefName());
-		request.setCurrencyCode(currencyCode.getCode());
-		request.setOrdIban(paymentRequest.getOrdIban());
-		request.setPaymentDate(paymentRequest.getPaymentDate());
-		request.setPaymentPurpose(purposeCode);
+		try {
+			BeanUtils.copyProperties(request, paymentRequest);
+			request.setCurrencyCode(currencyCode.getCode());
+			request.setPaymentPurpose(purposeCode);
+		} catch (IllegalAccessException | InvocationTargetException e) {
+			throw new PopulateEntityException(e);
+		}
 		return request;
 	}
 
@@ -121,6 +118,11 @@ public class PaymentRequestJpaRepository implements PaymentRequestGateway {
 		if (Objects.isNull(findById)) {
 			throw new NoneExistingPaymentRequestException();
 		}
+	}
+
+	@Override
+	public void updatePaymentRequest(PaymentRequest paymentRequest) {
+     
 	}
 
 }

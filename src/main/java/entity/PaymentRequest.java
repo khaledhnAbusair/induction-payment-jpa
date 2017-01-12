@@ -33,7 +33,7 @@ public class PaymentRequest implements Serializable {
 	@Column(length = 40)
 	private String ordIban;
 
-	/* @Temporal(TemporalType.DATE) */
+	@Temporal(TemporalType.DATE)
 	@Column(nullable = false)
 	private Date paymentDate;
 

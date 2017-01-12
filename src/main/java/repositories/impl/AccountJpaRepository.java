@@ -1,8 +1,10 @@
 
 package repositories.impl;
 
-import static repositories.sqlconstants.SqlConstants.*;
+import static repositories.sqlconstants.SqlConstants.FIND_ALL_ACCOUNTS_QUERY;
+import static repositories.sqlconstants.SqlConstants.UPDATE_ACCOUNT_QUERY;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
 import java.util.Objects;
 
@@ -10,24 +12,25 @@ import javax.persistence.EntityManager;
 import javax.persistence.Query;
 import javax.persistence.TypedQuery;
 
+import org.apache.commons.beanutils.BeanUtils;
+
 import entity.Account;
 import repositories.AccountGateway;
 import repositories.exceptions.AccountIsAlreadyExistException;
 import repositories.exceptions.AccountNotFoundExceptions;
-import repositories.exceptions.AccountsNotFoundExceptions;
 import repositories.exceptions.NoAccountHasBeenUpdated;
 import repositories.exceptions.NullAccountIBANException;
+import repositories.exceptions.PopulateEntityException;
 import repositories.loader.EntityManagerLoader;
 
 public class AccountJpaRepository implements AccountGateway {
-
-	private static final String EMPTY_QUTES = "";
+	private static final String ACCOUNT_CURRENCY_CODE = "currencyCode";
+	private static final String ACCOUNT_BALANCE = "balance";
+	private static final String ACCOUNT_STATUS = "status";
 	private static final String ACCOUNT_IBAN = "iban";
 	private static final String ACCOUNT_RULE = "rule";
-	private static final String ACCOUNT_CURRENCY_CODE = "currencyCode";
-	private static final String ACCOUNT_STATUS = "status";
-	private static final String ACCOUNT_BALANCE = "balance";
 	private static final String ACCOUNT_TYPE = "type";
+	private static final String EMPTY_QUTES = "";
 	private EntityManager entityManager;
 
 	public AccountJpaRepository() {
@@ -49,38 +52,44 @@ public class AccountJpaRepository implements AccountGateway {
 	@Override
 	public Collection<Account> loadAccounts() {
 		TypedQuery<Account> accounts = entityManager.createNamedQuery(FIND_ALL_ACCOUNTS_QUERY, Account.class);
-		isNullAccounts(accounts);
 		return accounts.getResultList();
 	}
 
 	@Override
 	public void updateAccount(Account account) {
-
+		boolean accountCommit = false;
 		Query query = entityManager.createQuery(UPDATE_ACCOUNT_QUERY);
 		populateAccountUpdateQuery(account, query);
 		try {
 			entityManager.getTransaction().begin();
-			query.executeUpdate();
+			int effectedRowUpdated = query.executeUpdate();
+			if (effectedRowUpdated == 0)
+				throw new NoAccountHasBeenUpdated();
 			entityManager.getTransaction().commit();
-		} catch (Exception e) {
-			entityManager.getTransaction().rollback();
-			throw new NoAccountHasBeenUpdated(e);
+			accountCommit = true;
+		} finally {
+			if (!accountCommit)
+				entityManager.getTransaction().rollback();
 		}
 	}
 
 	@Override
 	public void createAccount(Account newAccount) {
-
 		Account account = populateNewAccount(newAccount);
 		entityManager.getTransaction().begin();
-		Account find = entityManager.find(Account.class, account.getIban());
-		if (Objects.nonNull(find)) {
-			entityManager.getTransaction().rollback();
-			throw new AccountIsAlreadyExistException();
+		boolean commited = false;
+		try {
+			Account find = entityManager.find(Account.class, account.getIban());
+			if (Objects.nonNull(find)) {
+				throw new AccountIsAlreadyExistException();
+			}
+			entityManager.persist(newAccount);
+			entityManager.getTransaction().commit();
+			commited = true;
+		} finally {
+			if (!commited)
+				entityManager.getTransaction().rollback();
 		}
-		entityManager.persist(newAccount);
-		entityManager.getTransaction().commit();
-
 	}
 
 	private void populateAccountUpdateQuery(Account account, Query query) {
@@ -94,19 +103,12 @@ public class AccountJpaRepository implements AccountGateway {
 
 	private Account populateNewAccount(Account newAccount) {
 		Account account = new Account();
-		account.setIban(newAccount.getIban());
-		account.setBalance(newAccount.getBalance());
-		account.setCurrency(newAccount.getCurrency());
-		account.setType(newAccount.getType());
-		account.setStatus(newAccount.getStatus());
-		account.setRule(newAccount.getRule());
-		return account;
-	}
-
-	private void isNullAccounts(TypedQuery<Account> accounts) {
-		if (Objects.isNull(accounts)) {
-			throw new AccountsNotFoundExceptions();
+		try {
+			BeanUtils.copyProperties(account, newAccount);
+		} catch (IllegalAccessException | InvocationTargetException e) {
+			throw new PopulateEntityException(e);
 		}
+		return account;
 	}
 
 	private void isNullIban(String iban) {

@@ -123,6 +123,7 @@ public class PaymentPurposeJpaRepositoryTest {
 		PaymentPurpose paymentPurpose = new PaymentPurpose();
 		paymentPurpose.setCode("kha");
 		paymentPurpose.setName("Hlaa 3meee");
+		
 		paymentPurposeJpaRepository.updatePaymentPurposeName(paymentPurpose);
 	}
 
